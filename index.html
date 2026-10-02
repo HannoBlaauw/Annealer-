@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#202225">
+<title>Annealer</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#202225;--panel:#2c2f33;--line:#474b51;--text:#e6e8ea;--dim:#9ca2a9;--brass:#b9bfc7;--onacc:#1d1f22;--hot:#c62f36;--hot-t:#ff6b6b;--ok:#6fbf73;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#e4e5e7;--panel:#f3f4f5;--line:#b3b7bc;--text:#232629;--dim:#596067;--brass:#444c55;--onacc:#ffffff;--hot-t:#b3262d}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--text);font:16px/1.4 Barlow,system-ui,sans-serif;max-width:560px;padding:16px 16px 84px}
+h1,h2,.big{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:700;margin:0}
+h1{font-size:28px}h2{font-size:20px;color:var(--brass);margin-bottom:8px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;margin-bottom:14px}
+button{font:600 16px Barlow,system-ui,sans-serif;border:1px solid var(--line);background:transparent;color:var(--text);padding:12px 16px;border-radius:6px;min-height:48px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+button.primary{background:var(--brass);color:var(--onacc);border-color:var(--brass)}
+button:disabled{opacity:.4}
+.status{display:flex;align-items:center;gap:8px;color:var(--dim)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--dim)}
+.on .dot{background:var(--ok)}
+.timer{font-size:72px;line-height:1;text-align:center;margin:8px 0;font-variant-numeric:tabular-nums}
+.timer.run{color:var(--hot-t)}
+.row{display:flex;gap:10px}.row>*{flex:1}
+#go{min-height:72px;font-size:22px;background:var(--hot);border-color:var(--hot);color:#fff}
+#stop{min-height:72px;font-size:22px}
+label{display:block;color:var(--dim);font-size:14px;margin:10px 0 4px}
+input{width:100%;font:16px Barlow,system-ui,sans-serif;padding:11px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px}
+.prof{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+.prof:first-child{border-top:0}
+.prof .name{flex:1}.prof .name b{display:block}.prof .name small{color:var(--dim)}
+.prof.sel .name b{color:var(--brass)}
+.prof button{min-height:40px;padding:6px 10px}
+.msg{color:var(--dim);font-size:14px;margin-top:8px;min-height:20px}
+#bar{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px);pointer-events:none}
+#pull{pointer-events:auto;min-width:200px;border-radius:12px 12px 0 0;border-bottom:0;background:var(--panel)}
+#back{position:fixed;inset:0;background:rgba(0,0,0,.5)}
+#back[hidden]{display:none}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:12px 12px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));max-height:90%;overflow-y:auto;transform:translateY(100%);visibility:hidden;transition:transform .25s,visibility 0s .25s}
+#sheet.open{transform:none;visibility:visible;transition:transform .25s}
+@media (prefers-reduced-motion:reduce){#sheet,#sheet.open{transition:none}}
+</style>
+</head>
+<body>
+<header><h1>Annealer</h1><button id="conn" class="primary">Connect</button></header>
+
+<div class="panel">
+<div class="status" id="st"><span class="dot"></span><span id="stt">Not connected</span></div>
+<div class="timer big" id="timer">0.00 s</div>
+<div class="msg" id="sel" style="text-align:center">No profile selected</div>
+<div class="big" id="done" style="text-align:center;font-size:26px">Cases annealed: 0</div>
+<div class="row" style="margin-top:12px">
+<button id="go" disabled>Start</button>
+<button id="stop" disabled>Stop</button>
+</div>
+<button id="feed" disabled style="width:100%;margin-top:10px">Feed one case (test)</button>
+<div class="msg" id="msg"></div>
+</div>
+
+<div class="panel">
+<h2>Cartridge profiles</h2>
+<div id="list"></div>
+<div class="msg" id="empty">No profiles yet. Add one below.</div>
+</div>
+
+<div id="bar"><button id="pull" aria-expanded="false" aria-controls="sheet">&#9650; New profile</button></div>
+<div id="back" hidden></div>
+<div id="sheet" role="dialog" aria-labelledby="formTitle">
+<h2 id="formTitle">New profile</h2>
+<label for="pn">Cartridge name</label>
+<input id="pn">
+<label for="pt">Anneal time (seconds)</label>
+<input id="pt" type="number" inputmode="decimal" step="0.01" min="0.1" max="20">
+<label for="pnote">Coil position</label>
+<input id="pnote">
+<div class="msg" id="fmsg"></div>
+<div class="row" style="margin-top:8px">
+<button id="save" class="primary">Save profile</button>
+<button id="cancel">Cancel</button>
+</div>
+</div>
+
+<script>
+const SVC="19b10000-e8f2-537e-4f6c-d104768a1214",CMD="19b10001-e8f2-537e-4f6c-d104768a1214",STAT="19b10002-e8f2-537e-4f6c-d104768a1214";
+const $=id=>document.getElementById(id);
+let profiles=[],selId=null,editId=null,dev=null,cmdC=null,running=false,count=0;
+const send=t=>cmdC.writeValue(new TextEncoder().encode(t));
+
+function load(){try{profiles=JSON.parse(localStorage.getItem("annealer.profiles")||"[]");selId=localStorage.getItem("annealer.sel")}catch(e){profiles=[]}}
+function persist(){try{localStorage.setItem("annealer.profiles",JSON.stringify(profiles));localStorage.setItem("annealer.sel",selId||"")}catch(e){msg("Could not save on this device")}}
+function msg(t){$("msg").textContent=t}
+function fm(t){$("fmsg").textContent=t}
+function showCount(){$("done").textContent="Cases annealed: "+count}
+function openSheet(o){$("sheet").classList.toggle("open",o);$("back").hidden=!o;$("pull").setAttribute("aria-expanded",o);if(o)setTimeout(()=>$("pn").focus(),260);else $("pull").focus()}
+function cur(){return profiles.find(p=>p.id===selId)}
+
+function render(){
+  const l=$("list");l.innerHTML="";
+  $("empty").style.display=profiles.length?"none":"block";
+  profiles.forEach(p=>{
+    const d=document.createElement("div");d.className="prof"+(p.id===selId?" sel":"");
+    d.innerHTML='<div class="name"><b></b><small></small></div>';
+    d.querySelector("b").textContent=p.name;
+    d.querySelector("small").textContent=p.time.toFixed(2)+" s"+(p.note?" - "+p.note:"");
+    [["Use",()=>{selId=p.id;persist();render()}],["Edit",()=>edit(p)],["Delete",()=>{if(confirm("Delete "+p.name+"?")){profiles=profiles.filter(x=>x!==p);if(selId===p.id)selId=null;persist();render()}}]].forEach(([t,f])=>{const b=document.createElement("button");b.textContent=t;b.onclick=f;d.appendChild(b)});
+    l.appendChild(d);
+  });
+  const c=cur();
+  $("sel").textContent=c?c.name:"No profile selected";
+  if(!running)$("timer").textContent=c?c.time.toFixed(2)+" s":"0.00 s";
+  $("go").disabled=!(cmdC&&c&&!running);
+  $("feed").disabled=!(cmdC&&!running);
+  $("stop").disabled=!(cmdC&&running);
+}
+
+function edit(p){editId=p.id;$("pn").value=p.name;$("pt").value=p.time;$("pnote").value=p.note||"";$("formTitle").textContent="Edit profile";$("save").textContent="Update profile";fm("");openSheet(true)}
+function resetForm(){editId=null;["pn","pt","pnote"].forEach(i=>$(i).value="");$("formTitle").textContent="New profile";$("save").textContent="Save profile";fm("")}
+$("cancel").onclick=()=>{resetForm();openSheet(false)};
+$("pull").onclick=()=>{resetForm();openSheet(true)};
+$("back").onclick=()=>{resetForm();openSheet(false)};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("sheet").classList.contains("open")){resetForm();openSheet(false)}});
+$("save").onclick=()=>{
+  const name=$("pn").value.trim(),time=parseFloat($("pt").value);
+  if(!name)return fm("Enter a cartridge name");
+  if(!(time>=0.1&&time<=20))return fm("Anneal time must be 0.1 to 20 seconds");
+  const note=$("pnote").value.trim();
+  if(editId){Object.assign(profiles.find(x=>x.id===editId),{name,time,note})}
+  else{const p={id:Date.now().toString(36),name,time,note};profiles.push(p);selId=p.id}
+  persist();resetForm();openSheet(false);msg("Profile saved");render();
+};
+
+function setConn(on,text){$("st").classList.toggle("on",on);$("stt").textContent=text;$("conn").textContent=on?"Disconnect":"Connect"}
+function onStatus(e){
+  const s=new TextDecoder().decode(e.target.value),a=s.split(",");
+  running=["FEED","WAIT","RUN","DROP","HOLD","OPEN"].includes(a[0]);
+  $("timer").classList.toggle("run",a[0]==="RUN");
+  if(a[0]==="RUN"){$("timer").textContent=(a[1]/1000).toFixed(2)+" s";setConn(true,"Annealing case "+a[2])}
+  else if(a[0]==="FEED"){setConn(true,"Feeding case "+a[1])}
+  else if(a[0]==="WAIT"){setConn(true,"Waiting for case "+a[1])}
+  else if(a[0]==="HOLD"){setConn(true,"Case fed, trap door opening soon")}
+  else if(a[0]==="OPEN"){setConn(true,"Trap door open")}
+  else if(a[0]==="DROP"){$("timer").textContent="0.00 s";count=+a[1];showCount();setConn(true,"Releasing case "+a[1])}
+  else{
+    setConn(true,"Connected");
+    if(s==="DONE")msg("Finished");
+    else if(s==="STOPPED")msg("Stopped, coil and solenoid off. "+count+" annealed.");
+    else if(s==="ERR:NOCASE")msg("Stopped: no case detected after feeding (feeder empty or jammed). "+count+" annealed.");
+    else if(s.startsWith("ERR"))msg("Arduino rejected the settings");
+  }
+  render();
+}
+async function connect(){
+  if(!navigator.bluetooth)return msg("Web Bluetooth is not available. Open this page in Chrome on Android.");
+  try{
+    dev=await navigator.bluetooth.requestDevice({filters:[{name:"Annealer"}],optionalServices:[SVC]});
+    dev.addEventListener("gattserverdisconnected",()=>{cmdC=null;running=false;$("timer").classList.remove("run");setConn(false,"Not connected");msg("Disconnected");render()});
+    const srv=await dev.gatt.connect(),s=await srv.getPrimaryService(SVC);
+    cmdC=await s.getCharacteristic(CMD);
+    const st=await s.getCharacteristic(STAT);
+    await st.startNotifications();st.addEventListener("characteristicvaluechanged",onStatus);
+    setConn(true,"Connected");msg("");render();
+  }catch(e){msg("Could not connect: "+e.message)}
+}
+$("conn").onclick=()=>{if(dev&&dev.gatt.connected)dev.gatt.disconnect();else connect()};
+$("go").onclick=async()=>{
+  const c=cur();
+  if(!c||!cmdC)return;
+  try{await send("B,"+Math.round(c.time*1000)+",0");count=0;showCount();running=true;msg("Running until you press Stop or the feeder runs empty");render()}catch(e){msg("Send failed: "+e.message)}
+};
+$("feed").onclick=async()=>{try{await send("F");msg("Trap door opens 5 s after you press")}catch(e){msg("Send failed: "+e.message)}};
+$("stop").onclick=async()=>{try{await send("S")}catch(e){msg("Stop failed: "+e.message)}};
+
+load();render();
+</script>
+</body>
+</html>
